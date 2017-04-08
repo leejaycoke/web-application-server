@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.lang.reflect.Method;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.util.HashMap;
@@ -19,45 +20,32 @@ public class RequestHandler extends Thread {
     }
 
     public void run() {
-        log.debug("New Client Connect! Connected IP : {}, Port : {}", connection.getInetAddress(),
-                connection.getPort());
+        log.debug("New Client Connect! Connected IP : {}, Port : {}", connection.getInetAddress(), connection.getPort());
 
         try (InputStream in = connection.getInputStream(); OutputStream out = connection.getOutputStream()) {
-            // TODO 사용자 요청에 대한 처리는 이 곳에 구현하면 된다.
             BufferedReader br = new BufferedReader(new InputStreamReader(in, "UTF-8"));
+            StringBuilder rawHeader = new StringBuilder();
+            rawHeader.append(br.readLine());
 
-            String header = br.readLine();
-            if (header == null) {
-                return;
+            String headerLine;
+            while (!(headerLine = br.readLine()).equals("")) {
+                log.info("headerLine={}", headerLine);
+                rawHeader.append("\n").append(headerLine);
             }
 
-            log.info("request = {}", header);
-            String[] uris = header.split(" ");
-            String path = uris[1];
-
-            Map<String, String> params;
-
-            if (path.contains("?")) {
-                String[] args = path.split("\\?");
-                path = args[0];
-                if (args.length > 1) {
-                    params = parseParameter(args[1]);
-                }
+            HttpRequest httpRequest = new HttpRequest(rawHeader.toString());
+            if (httpRequest.getMethod() == HttpRequest.Method.POST) {
+                String data = readData(br);
+                log.info("data={}", data);
+                httpRequest.setRawData(data);
             }
 
-            log.info("path={}", path);
+            log.info("header={}", rawHeader.toString());
 
-            File file = new File("./webapp" + path);
+//            HttpResponse httpResponse = sendToContainer(httpRequest);
+
+            File file = new File("./webapp" + httpRequest.getPath());
             byte[] body = Files.readAllBytes(file.toPath());
-
-            while (!"".equals(header)) {
-                log.info("header = {}", header);
-                header = br.readLine();
-            }
-
-            if (path.equals("/user/create")) {
-                log.info("good..");
-            }
 
             DataOutputStream dos = new DataOutputStream(out);
             String contentType = getContentTypeByExtension(getFileExtension(file.getName()));
@@ -68,27 +56,36 @@ public class RequestHandler extends Thread {
         }
     }
 
-    private void userCreate(Map<String, String> params) {
-//        if (params)
+    private String readData(BufferedReader br) throws IOException {
+        StringBuilder data = new StringBuilder();
+        data.append(br.readLine());
+
+        String headerLine;
+        while (!(headerLine = br.readLine()).equals("")) {
+            data.append("\n").append(headerLine);
+        }
+
+        return data.toString();
     }
 
-    private Map<String, String> parseParameter(String param) {
-        Map<String, String> params = new HashMap<>();
+    private HttpResponse sendToContainer(HttpRequest httpRequest) {
+        HttpContainer httpContainer = new HttpContainer();
+        String requestMethod = httpRequest.getMethod().name().toLowerCase();
 
-        String[] valueSets = param.split("&");
-        for (String valueSet : valueSets) {
-            String[] args = valueSet.split("=");
-            if (args.length > 1) {
-                params.put(args[0], args[1]);
-            } else {
-                params.put(args[0], "");
-            }
+        try {
+            Method method = httpContainer.getClass().getMethod(requestMethod, httpRequest.getClass());
+            log.info("try invoke method name={}", requestMethod);
+            HttpResponse httpResponse = (HttpResponse) method.invoke(httpContainer, httpRequest);
+            return httpResponse;
+        } catch (Exception e) {
+            log.error("invoke error={}", e.getMessage());
         }
-        return params;
+
+        return null;
     }
 
     private String getFileExtension(String filename) {
-        String[] args =  filename.split("\\.");
+        String[] args = filename.split("\\.");
         if (args.length > 0) {
             return "." + args[args.length - 1];
         }
