@@ -22,7 +22,11 @@ public class HttpRequest {
 
     private Method method;
 
+    private Map<String, String> headers = new HashMap<>();
+
     private Map<String, String> params = new HashMap<>();
+
+    private Map<String, String> data = new HashMap<>();
 
     public HttpRequest(String rawHeader) {
         if (Strings.isNullOrEmpty(rawHeader)) {
@@ -33,14 +37,20 @@ public class HttpRequest {
     }
 
     private void parse() {
-        String[] headers = rawHeader.split("\n")[0].split(" ");
-        if (headers.length != 3) {
-            throw new RuntimeException("알 수 없는 헤더입니다.");
+        List<String> headers = Arrays.asList(rawHeader.split("\n"));
+
+        List<String> requests = Arrays.asList(headers.get(0).split(" "));
+        if (requests.size() != 3) {
+            throw new RuntimeException("알 수 없는 요청입니다.");
         }
 
-        parseMethod(headers[0]);
-        parsePath(headers[1]);
-        parseParams(headers[1]);
+        parseMethod(requests.get(0));
+        parsePath(requests.get(1));
+        parseParams(requests.get(2));
+
+        if (headers.size() > 1) {
+            parseHeaders(headers.subList(1, headers.size()));
+        }
     }
 
     private void parseMethod(String stringMethod) {
@@ -59,17 +69,42 @@ public class HttpRequest {
         }
 
         List<String> params = Arrays.asList(identifies[1].split("&"));
-        params.forEach(this::parseParam);
+        params.forEach(param -> {
+            KeyValue keyValue = parseKeyValue(param, "=");
+            this.params.put(keyValue.getKey(), keyValue.getValue());
+        });
     }
 
-    private void parseParam(String paramSet) { // "a=b"
-        log.info("paramSet={}", paramSet);
-        String[] keyValue = paramSet.split("=", -2);
-        params.put(keyValue[0], keyValue[1]);
+    private KeyValue parseKeyValue(String paramSet, String delimiter) { // "a=b"
+        String[] keyValue = paramSet.split(delimiter, -2);
+
+        if (keyValue.length < 2) {
+            return new KeyValue(keyValue[0], "");
+        }
+        return new KeyValue(keyValue[0], keyValue[1]);
     }
 
-    public void setRawData(String rawData) {
+    private void parseHeaders(List<String> headers) {
+        headers.forEach(header -> {
+            KeyValue keyValue = parseKeyValue(header, ": ");
+            this.headers.put(keyValue.getKey(), keyValue.getValue());
+        });
+    }
 
+    void setRawData(String rawData) {
+        parseRawData(rawData);
+    }
+
+    private void parseRawData(String rawData) {
+        List<String> data = Arrays.asList(rawData.split("&"));
+        data.forEach(rawKeyValue -> {
+            KeyValue keyValue = parseKeyValue(rawKeyValue, "=");
+            this.data.put(keyValue.getKey(), keyValue.getValue());
+        });
+    }
+
+    public String getHeader(String key) {
+        return headers.get(key);
     }
 
     Method getMethod() {
@@ -84,7 +119,39 @@ public class HttpRequest {
         return params.get(key);
     }
 
+    String getData(String key) {
+        return data.get(key);
+    }
+
     public enum Method {
         GET, POST
+    }
+
+    private class KeyValue {
+
+        private String key;
+
+        private String value;
+
+        public KeyValue(String key, String value) {
+            this.key = key;
+            this.value = value;
+        }
+
+        public String getKey() {
+            return key;
+        }
+
+        public void setKey(String key) {
+            this.key = key;
+        }
+
+        public String getValue() {
+            return value;
+        }
+
+        public void setValue(String value) {
+            this.value = value;
+        }
     }
 }

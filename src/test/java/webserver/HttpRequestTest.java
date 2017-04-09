@@ -42,6 +42,9 @@ public class HttpRequestTest {
         Assert.assertEquals("a,b,c".split(",", 1).length, 1);
 
         Assert.assertEquals("=".split("=", -2).length, 2);
+
+        Assert.assertEquals("Host: localhost:8080".split(": ", -2).length, 2);
+        Assert.assertEquals("Host localhost:8080".split(": ", -2).length, 2);
     }
 
     @Test
@@ -52,6 +55,34 @@ public class HttpRequestTest {
         Assert.assertEquals(httpRequest.getParam("e"), "");
         Assert.assertEquals(httpRequest.getParam("f"), "1");
         Assert.assertEquals(httpRequest.getParam("?foo"), "bar");
+    }
+
+    @Test
+    public void 헤더파싱() {
+        String header = "POST /user/create HTTP/1.1\n" +
+                "Host: localhost:8080\n" +
+                "Connection: keep-alive\n" +
+                "Content-Length: 11\n" +
+                "Content-Type: application/x-www-form-urlencoded\n" +
+                "Accept: */*\n";
+        HttpRequest httpRequest = new HttpRequest(header);
+        String contentLength = httpRequest.getHeader("Content-Length");
+        Assert.assertNotNull(contentLength);
+        Assert.assertEquals(contentLength, "11");
+    }
+
+    @Test
+    public void POST_데이터_파싱() {
+        String header = "POST /user/create HTTP/1.1\n" +
+                "Host: localhost:8080\n" +
+                "Connection: keep-alive\n" +
+                "Content-Length: 11\n" +
+                "Content-Type: application/x-www-form-urlencoded\n" +
+                "Accept: */*\n";
+        HttpRequest httpRequest = new HttpRequest(header);
+
+        httpRequest.setRawData("foo=bar&a=1");
+        Assert.assertNotNull(httpRequest.getData("foo"));
     }
 
 }

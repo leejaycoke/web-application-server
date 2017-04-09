@@ -11,7 +11,7 @@ public class WebServer {
     private static final int DEFAULT_PORT = 8080;
 
     public static void main(String args[]) throws Exception {
-        int port = 0;
+        int port;
         if (args == null || args.length == 0) {
             port = DEFAULT_PORT;
         } else {
@@ -26,7 +26,7 @@ public class WebServer {
             // 클라이언트가 연결될때까지 대기한다.
             Socket connection;
             while ((connection = listenSocket.accept()) != null) {
-                RequestHandler requestHandler = new RequestHandler(connection);
+                RequestHandler requestHandler = new RequestHandler(connection, port);
                 requestHandler.start();
             }
         }

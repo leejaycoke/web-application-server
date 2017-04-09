@@ -6,17 +6,35 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.lang.reflect.Method;
 import java.net.Socket;
+import java.net.SocketException;
 import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
 
 public class RequestHandler extends Thread {
+
+    private final static Map<String, String> CONTENT_TYPES = new HashMap<>();
+
+    static {
+        CONTENT_TYPES.put(".jpeg", "image/jpeg");
+        CONTENT_TYPES.put(".jpg", "image/jpg");
+        CONTENT_TYPES.put(".html", "text/html; charset=UTF-8");
+        CONTENT_TYPES.put(".htm", "text/html; charset=UTF-8");
+        CONTENT_TYPES.put(".js", "application/javascript");
+        CONTENT_TYPES.put(".css", "text/css");
+        CONTENT_TYPES.put(".woff", "application/x-font-woff");
+    }
+
     private static final Logger log = LoggerFactory.getLogger(RequestHandler.class);
 
     private Socket connection;
 
-    public RequestHandler(Socket connectionSocket) {
+    private int port;
+
+    public RequestHandler(Socket connectionSocket, int port) throws SocketException {
         this.connection = connectionSocket;
+        connection.setSoTimeout(3000);
+        this.port = port;
     }
 
     public void run() {
@@ -24,48 +42,37 @@ public class RequestHandler extends Thread {
 
         try (InputStream in = connection.getInputStream(); OutputStream out = connection.getOutputStream()) {
             BufferedReader br = new BufferedReader(new InputStreamReader(in, "UTF-8"));
-            StringBuilder rawHeader = new StringBuilder();
-            rawHeader.append(br.readLine());
 
-            String headerLine;
-            while (!(headerLine = br.readLine()).equals("")) {
-                log.info("headerLine={}", headerLine);
-                rawHeader.append("\n").append(headerLine);
+            StringBuilder rawHeader = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null && !line.equals("")) {
+                rawHeader.append("\n").append(line);
+                log.info("line={}", line);
             }
 
             HttpRequest httpRequest = new HttpRequest(rawHeader.toString());
             if (httpRequest.getMethod() == HttpRequest.Method.POST) {
-                String data = readData(br);
-                log.info("data={}", data);
-                httpRequest.setRawData(data);
+                Long contentLength = Long.parseLong(httpRequest.getHeader("Content-Length"));
+
+                StringBuilder data = new StringBuilder();
+                for (Long count = 0L; count < contentLength; count++) {
+                    data.append((char) br.read());
+                }
+
+                httpRequest.setRawData(data.toString());
             }
 
-            log.info("header={}", rawHeader.toString());
-
-//            HttpResponse httpResponse = sendToContainer(httpRequest);
-
-            File file = new File("./webapp" + httpRequest.getPath());
-            byte[] body = Files.readAllBytes(file.toPath());
-
             DataOutputStream dos = new DataOutputStream(out);
-            String contentType = getContentTypeByExtension(getFileExtension(file.getName()));
-            response200Header(dos, body.length, contentType);
-            responseBody(dos, body);
+
+            HttpResponse httpResponse = sendToContainer(httpRequest);
+            if (httpResponse.isRedirect()) {
+                responseToRedirect(dos, httpResponse.getPath(), httpResponse.getHeaders());
+            } else {
+                responseToPath(dos, "./webapp" + httpResponse.getPath(), httpResponse.getHeaders());
+            }
         } catch (IOException e) {
             log.error(e.getMessage());
         }
-    }
-
-    private String readData(BufferedReader br) throws IOException {
-        StringBuilder data = new StringBuilder();
-        data.append(br.readLine());
-
-        String headerLine;
-        while (!(headerLine = br.readLine()).equals("")) {
-            data.append("\n").append(headerLine);
-        }
-
-        return data.toString();
     }
 
     private HttpResponse sendToContainer(HttpRequest httpRequest) {
@@ -75,8 +82,8 @@ public class RequestHandler extends Thread {
         try {
             Method method = httpContainer.getClass().getMethod(requestMethod, httpRequest.getClass());
             log.info("try invoke method name={}", requestMethod);
-            HttpResponse httpResponse = (HttpResponse) method.invoke(httpContainer, httpRequest);
-            return httpResponse;
+            HttpResponse response = (HttpResponse) method.invoke(httpContainer, httpRequest);
+            return response;
         } catch (Exception e) {
             log.error("invoke error={}", e.getMessage());
         }
@@ -84,19 +91,38 @@ public class RequestHandler extends Thread {
         return null;
     }
 
-    private String getFileExtension(String filename) {
-        String[] args = filename.split("\\.");
-        if (args.length > 0) {
-            return "." + args[args.length - 1];
+    private void responseToRedirect(DataOutputStream dos, String location, Map<String, String> headers) {
+        try {
+            dos.writeBytes("HTTP/1.1 302 OK \r\n");
+            for (String key : headers.keySet()) {
+                dos.writeBytes(key + ": " + headers.get(key) + "\r\n");
+            }
+            dos.writeBytes("Location: http://localhost:" + port + location + "\r\n");
+            dos.writeBytes("\r\n");
+        } catch (IOException e) {
+            log.error(e.getMessage());
         }
-        return null;
     }
 
-    private void response200Header(DataOutputStream dos, int lengthOfBodyContent, String contentType) {
+    private void responseToPath(DataOutputStream dos, String path, Map<String, String> headers) throws IOException {
+        File file = new File(path);
+        log.info("file.exists={}", file.exists());
+        byte[] body = Files.readAllBytes(file.toPath());
+
+        String extension = getFileExtension(file.getName());
+        responseHeader(dos, body.length, getContentType(extension), headers);
+        responseBody(dos, body);
+    }
+
+    private void responseHeader(DataOutputStream dos, int lengthOfBodyContent, String contentType, Map<String, String> headers) {
         try {
             dos.writeBytes("HTTP/1.1 200 OK \r\n");
             dos.writeBytes("Content-Type: " + contentType + "\r\n");
             dos.writeBytes("Content-Length: " + lengthOfBodyContent + "\r\n");
+
+            for (String key : headers.keySet()) {
+                dos.writeBytes(key + ": " + headers.get(key) + "\r\n");
+            }
             dos.writeBytes("\r\n");
         } catch (IOException e) {
             log.error(e.getMessage());
@@ -112,20 +138,16 @@ public class RequestHandler extends Thread {
         }
     }
 
-    private static String getContentTypeByExtension(String extension) {
-        Map<String, String> types = new HashMap<>();
-        types.put(".jpeg", "image/jpeg");
-        types.put(".jpg", "image/jpg");
-        types.put(".html", "text/html; charset=UTF-8");
-        types.put(".htm", "text/html; charset=UTF-8");
-        types.put(".js", "application/javascript");
-        types.put(".css", "text/css");
-        types.put(".woff", "application/x-font-woff");
-
-        String contentType = types.get(extension);
-        if (contentType == null) {
-            return types.get(".html");
+    private String getFileExtension(String filename) {
+        String[] args = filename.split("\\.");
+        if (args.length > 0) {
+            return "." + args[args.length - 1];
         }
-        return contentType;
+        return null;
     }
+
+    private String getContentType(String extension) {
+        return CONTENT_TYPES.get(extension);
+    }
+
 }
