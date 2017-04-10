@@ -36,9 +36,10 @@ public class HttpContainer {
         User user = new User(userId, password, name, email);
         DataBase.addUser(user);
 
-        HttpResponse response = new HttpResponse(302, "/index.html");
-        response.setRedirect(true);
-        return response;
+        return new HttpResponse.Builder()
+                .setPath("/webapp/index.html")
+                .setRedirect(true)
+                .setStatusCode(302).build();
     }
 
     private HttpResponse login(HttpRequest httpRequest) {

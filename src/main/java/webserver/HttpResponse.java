@@ -1,6 +1,10 @@
 package webserver;
 
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -8,52 +12,95 @@ import java.util.Map;
  */
 public class HttpResponse {
 
-    private int statusCode;
+    private Builder builder;
 
-    private String path;
-
-    private boolean isRedirect;
-
-    private Map<String, String> headers = new HashMap<>();
-
-    public HttpResponse(int statusCode, String path) {
-        this.statusCode = statusCode;
-        this.path = path;
+    public HttpResponse(Builder builder) {
+        this.builder = builder;
     }
 
-    public int getStatusCode() {
-        return statusCode;
-    }
-
-    public void setStatusCode(int statusCode) {
-        this.statusCode = statusCode;
-    }
-
-    public String getPath() {
-        return path;
-    }
-
-    public void setPath(String path) {
-        this.path = path;
-    }
-
-    public boolean isRedirect() {
-        return isRedirect;
-    }
-
-    public void setRedirect(boolean redirect) {
-        isRedirect = redirect;
-    }
-
-    public void addCookie(String key, String value) {
-        if (headers.containsKey("Set-Cookie")) {
-            headers.put("Set-Cookie", headers.get("Set-Cookie") + "; " + key + "=" + value);
-        } else {
-            headers.put("Set-Cookie", key + "=" + value);
+    public void createHeader(DataOutputStream dos) throws IOException {
+        dos.writeBytes("HTTP/1.1 " + builder.getStatusCode() + " OK \r\n");
+        writeCookieHeader(dos);
+        for (String key : headers.keySet()) {
+            dos.writeBytes(key + ": " + headers.get(key) + "\r\n");
         }
+        dos.writeBytes("Location: http://localhost:" + port + location + "\r\n");
+        dos.writeBytes("\r\n");
     }
 
-    public Map<String, String> getHeaders() {
-        return headers;
+    public void createBody(DataOutputStream dos) {
+
+    }
+
+    private void writeCookieHeader(DataOutputStream dos) {
+        builder.getCookies().forEach(cookie -> {
+            try {
+                dos.writeBytes("Set-Cookie: " + cookie.getKey() + "=" + cookie.getValue() + "\r\n");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    public static class Builder {
+
+        private boolean isRedirect = false;
+
+        private String path = null;
+
+        private List<Cookie> cookies = new ArrayList<>();
+
+        private Map<String, String> headers = new HashMap<>();
+
+        private int statusCode = 200;
+
+        public boolean isRedirect() {
+            return isRedirect;
+        }
+
+        public Builder setRedirect(boolean redirect) {
+            isRedirect = redirect;
+            return this;
+        }
+
+        public String getPath() {
+            return path;
+        }
+
+        public Builder setPath(String path) {
+            this.path = path;
+            return this;
+        }
+
+        public List<Cookie> getCookies() {
+            return cookies;
+        }
+
+        public Builder setCookies(List<Cookie> cookies) {
+            this.cookies = cookies;
+            return this;
+        }
+
+        public Map<String, String> getHeaders() {
+            return headers;
+        }
+
+        public Builder setHeaders(Map<String, String> headers) {
+            this.headers = headers;
+            return this;
+        }
+
+        public int getStatusCode() {
+            return statusCode;
+        }
+
+        public Builder setStatusCode(int statusCode) {
+            this.statusCode = statusCode;
+            return this;
+        }
+
+        public HttpResponse build() {
+            return new HttpResponse(this);
+        }
     }
 }

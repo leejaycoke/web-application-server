@@ -1,13 +1,13 @@
 package webserver;
 
-import com.google.common.base.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.*;
 
 /**
  * Created by JuHyunLee on 2017. 4. 8..
@@ -28,50 +28,82 @@ public class HttpRequest {
 
     private Map<String, String> data = new HashMap<>();
 
-    public HttpRequest(String rawHeader) {
-        if (Strings.isNullOrEmpty(rawHeader)) {
-            throw new RuntimeException("헤더가 없습니다.");
-        }
-        this.rawHeader = rawHeader.trim();
-        parse();
+    public HttpRequest(InputStream in) throws IOException {
+        parse(new BufferedReader(new InputStreamReader(in, "UTF-8")));
     }
 
-    private void parse() {
-        List<String> headers = Arrays.asList(rawHeader.split("\n"));
+    private void parse(BufferedReader br) throws IOException {
+        List<String> lines = new ArrayList<>();
 
-        List<String> requests = Arrays.asList(headers.get(0).split(" "));
-        if (requests.size() != 3) {
-            throw new RuntimeException("알 수 없는 요청입니다.");
+        String line;
+        while ((line = br.readLine()) != null && !line.equals("")) {
+            lines.add(line);
         }
 
-        parseMethod(requests.get(0));
-        parsePath(requests.get(1));
-        parseParams(requests.get(2));
+        parseRequest(lines.get(0));
+        parseHeaders(lines.subList(1, lines.size() - 1));
 
-        if (headers.size() > 1) {
-            parseHeaders(headers.subList(1, headers.size()));
+        Integer contentLength = getContentLength();
+        if (getMethod() == Method.POST && contentLength > 0) {
+            char[] body = new char[contentLength];
+            br.read(body, 0, contentLength);
+            parseBody(new String(body));
         }
+
     }
 
-    private void parseMethod(String stringMethod) {
-        method = Method.valueOf(stringMethod);
+    private Integer getContentLength() {
+        String contentLength = getHeader("Content-Length");
+        if (contentLength == null) {
+            return 0;
+        }
+        return Integer.parseInt(contentLength);
     }
 
-    private void parsePath(String stringPath) {
-        String[] uris = stringPath.split("\\?");
-        path = uris[0];
-    }
-
-    private void parseParams(String stringPath) {
-        String[] identifies = stringPath.split("\\?", 2); // String[0] = "/user/asdf", String[1] = "a=b&c=d&e=f"
-        if (identifies.length < 2) {
+    private void parseRequest(String requestLine) {
+        String[] requestLines = requestLine.split(" ");
+        if (requestLines.length != 3) {
             return;
         }
 
-        List<String> params = Arrays.asList(identifies[1].split("&"));
+        parseMethod(requestLines[0]);
+        parsePath(requestLines[1]);
+    }
+
+    private void parseMethod(String requestLine) {
+        String[] requestLines = requestLine.split(" ");
+        method = Method.valueOf(requestLines[0]);
+    }
+
+    private void parsePath(String stringPath) {
+        String[] uris = stringPath.split("\\?", 2);
+        path = uris[0];
+
+        if (uris.length == 2) {
+            parseParams(uris[1]);
+        }
+    }
+
+    private void parseParams(String rawParams) {
+        List<String> params = Arrays.asList(rawParams.split("&"));
         params.forEach(param -> {
             KeyValue keyValue = parseKeyValue(param, "=");
             this.params.put(keyValue.getKey(), keyValue.getValue());
+        });
+    }
+
+    private void parseHeaders(List<String> headers) {
+        headers.forEach(header -> {
+            KeyValue keyValue = parseKeyValue(header, ": ");
+            this.headers.put(keyValue.getKey(), keyValue.getValue());
+        });
+    }
+
+    private void parseBody(String body) {
+        List<String> data = Arrays.asList(body.split("&"));
+        data.forEach(rawKeyValue -> {
+            KeyValue keyValue = parseKeyValue(rawKeyValue, "=");
+            this.data.put(keyValue.getKey(), keyValue.getValue());
         });
     }
 
@@ -82,25 +114,6 @@ public class HttpRequest {
             return new KeyValue(keyValue[0], "");
         }
         return new KeyValue(keyValue[0], keyValue[1]);
-    }
-
-    private void parseHeaders(List<String> headers) {
-        headers.forEach(header -> {
-            KeyValue keyValue = parseKeyValue(header, ": ");
-            this.headers.put(keyValue.getKey(), keyValue.getValue());
-        });
-    }
-
-    void setRawData(String rawData) {
-        parseRawData(rawData);
-    }
-
-    private void parseRawData(String rawData) {
-        List<String> data = Arrays.asList(rawData.split("&"));
-        data.forEach(rawKeyValue -> {
-            KeyValue keyValue = parseKeyValue(rawKeyValue, "=");
-            this.data.put(keyValue.getKey(), keyValue.getValue());
-        });
     }
 
     public String getHeader(String key) {

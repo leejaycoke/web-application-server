@@ -39,37 +39,16 @@ public class RequestHandler extends Thread {
 
     public void run() {
         log.debug("New Client Connect! Connected IP : {}, Port : {}", connection.getInetAddress(), connection.getPort());
-
         try (InputStream in = connection.getInputStream(); OutputStream out = connection.getOutputStream()) {
-            BufferedReader br = new BufferedReader(new InputStreamReader(in, "UTF-8"));
-
-            StringBuilder rawHeader = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null && !line.equals("")) {
-                rawHeader.append("\n").append(line);
-                log.info("line={}", line);
-            }
-
-            HttpRequest httpRequest = new HttpRequest(rawHeader.toString());
-            if (httpRequest.getMethod() == HttpRequest.Method.POST) {
-                Long contentLength = Long.parseLong(httpRequest.getHeader("Content-Length"));
-
-                StringBuilder data = new StringBuilder();
-                for (Long count = 0L; count < contentLength; count++) {
-                    data.append((char) br.read());
-                }
-
-                httpRequest.setRawData(data.toString());
+            HttpRequest httpRequest = new HttpRequest(in);
+            HttpResponse httpResponse = sendToContainer(httpRequest);
+            if (httpResponse == null) {
+                throw new RuntimeException("응답 생성도중 에러 발생");
             }
 
             DataOutputStream dos = new DataOutputStream(out);
-
-            HttpResponse httpResponse = sendToContainer(httpRequest);
-            if (httpResponse.isRedirect()) {
-                responseToRedirect(dos, httpResponse.getPath(), httpResponse.getHeaders());
-            } else {
-                responseToPath(dos, "./webapp" + httpResponse.getPath(), httpResponse.getHeaders());
-            }
+            httpResponse.createHeader(dos);
+            httpResponse.createBody(dos);
         } catch (IOException e) {
             log.error(e.getMessage());
         }
