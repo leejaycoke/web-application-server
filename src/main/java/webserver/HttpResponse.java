@@ -1,10 +1,11 @@
 package webserver;
 
+import com.google.common.io.Files;
+
 import java.io.DataOutputStream;
+import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -18,28 +19,55 @@ public class HttpResponse {
         this.builder = builder;
     }
 
+    public void send(DataOutputStream dos, String viewFolder) throws IOException {
+        createHeader(dos);
+
+        if (!builder.isRedirect()) {
+            createBody(dos, viewFolder);
+        }
+        dos.flush();
+    }
+
     public void createHeader(DataOutputStream dos) throws IOException {
         dos.writeBytes("HTTP/1.1 " + builder.getStatusCode() + " OK \r\n");
-        writeCookieHeader(dos);
-        for (String key : headers.keySet()) {
-            dos.writeBytes(key + ": " + headers.get(key) + "\r\n");
+
+        if (builder.hasCookie()) {
+            writeCookie(dos);
         }
-        dos.writeBytes("Location: http://localhost:" + port + location + "\r\n");
+
+        if (builder.isRedirect()) {
+            dos.writeBytes("Location: " + builder.getPath() + "\r\n");
+        }
+
         dos.writeBytes("\r\n");
     }
 
-    public void createBody(DataOutputStream dos) {
+    private void createBody(DataOutputStream dos, String viewFolder) throws IOException {
+        File file = new File(viewFolder + builder.getPath());
+        if (!file.exists()) {
+            return;
+        }
 
+        byte[] body = Files.toByteArray(file);
+        dos.write(body, 0, body.length);
     }
 
-    private void writeCookieHeader(DataOutputStream dos) {
-        builder.getCookies().forEach(cookie -> {
-            try {
-                dos.writeBytes("Set-Cookie: " + cookie.getKey() + "=" + cookie.getValue() + "\r\n");
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+    private void writeCookie(DataOutputStream dos) throws IOException {
+        Cookie cookie = builder.getCookie();
+        if (cookie == null) {
+            return;
+        }
+
+        StringBuilder stringBuilder = new StringBuilder();
+        cookie.getValues().forEach((key, value) -> {
+            stringBuilder.append(key).append("=").append(value).append("; ");
         });
+
+        stringBuilder.append("Domain=").append(cookie.getDomain())
+                .append("; ")
+                .append("Path=").append(cookie.getPath());
+
+        dos.writeBytes("Set-Cookie: " + stringBuilder.toString() + "\r\n");
     }
 
     public static class Builder {
@@ -48,18 +76,31 @@ public class HttpResponse {
 
         private String path = null;
 
-        private List<Cookie> cookies = new ArrayList<>();
+        private Cookie cookie = null;
 
         private Map<String, String> headers = new HashMap<>();
 
         private int statusCode = 200;
 
+        public Builder() {
+
+        }
+
         public boolean isRedirect() {
             return isRedirect;
         }
 
+        public Builder(int statusCode) {
+            this.statusCode = statusCode;
+        }
+
         public Builder setRedirect(boolean redirect) {
             isRedirect = redirect;
+            if (redirect) {
+                this.statusCode = 302;
+            } else {
+                this.statusCode = 200;
+            }
             return this;
         }
 
@@ -72,12 +113,12 @@ public class HttpResponse {
             return this;
         }
 
-        public List<Cookie> getCookies() {
-            return cookies;
+        public Cookie getCookie() {
+            return cookie;
         }
 
-        public Builder setCookies(List<Cookie> cookies) {
-            this.cookies = cookies;
+        public Builder setCookie(Cookie cookie) {
+            this.cookie = cookie;
             return this;
         }
 
@@ -97,6 +138,10 @@ public class HttpResponse {
         public Builder setStatusCode(int statusCode) {
             this.statusCode = statusCode;
             return this;
+        }
+
+        public boolean hasCookie() {
+            return cookie != null;
         }
 
         public HttpResponse build() {

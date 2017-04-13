@@ -3,11 +3,13 @@ package webserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.Socket;
 import java.net.SocketException;
-import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -31,10 +33,13 @@ public class RequestHandler extends Thread {
 
     private int port;
 
-    public RequestHandler(Socket connectionSocket, int port) throws SocketException {
+    private final String viewFolder;
+
+    public RequestHandler(Socket connectionSocket, int port, String viewFolder) throws SocketException {
         this.connection = connectionSocket;
-        connection.setSoTimeout(3000);
+        connection.setSoTimeout(5000);
         this.port = port;
+        this.viewFolder = viewFolder;
     }
 
     public void run() {
@@ -47,8 +52,7 @@ public class RequestHandler extends Thread {
             }
 
             DataOutputStream dos = new DataOutputStream(out);
-            httpResponse.createHeader(dos);
-            httpResponse.createBody(dos);
+            httpResponse.send(dos, viewFolder);
         } catch (IOException e) {
             log.error(e.getMessage());
         }
@@ -68,65 +72,6 @@ public class RequestHandler extends Thread {
         }
 
         return null;
-    }
-
-    private void responseToRedirect(DataOutputStream dos, String location, Map<String, String> headers) {
-        try {
-            dos.writeBytes("HTTP/1.1 302 OK \r\n");
-            for (String key : headers.keySet()) {
-                dos.writeBytes(key + ": " + headers.get(key) + "\r\n");
-            }
-            dos.writeBytes("Location: http://localhost:" + port + location + "\r\n");
-            dos.writeBytes("\r\n");
-        } catch (IOException e) {
-            log.error(e.getMessage());
-        }
-    }
-
-    private void responseToPath(DataOutputStream dos, String path, Map<String, String> headers) throws IOException {
-        File file = new File(path);
-        log.info("file.exists={}", file.exists());
-        byte[] body = Files.readAllBytes(file.toPath());
-
-        String extension = getFileExtension(file.getName());
-        responseHeader(dos, body.length, getContentType(extension), headers);
-        responseBody(dos, body);
-    }
-
-    private void responseHeader(DataOutputStream dos, int lengthOfBodyContent, String contentType, Map<String, String> headers) {
-        try {
-            dos.writeBytes("HTTP/1.1 200 OK \r\n");
-            dos.writeBytes("Content-Type: " + contentType + "\r\n");
-            dos.writeBytes("Content-Length: " + lengthOfBodyContent + "\r\n");
-
-            for (String key : headers.keySet()) {
-                dos.writeBytes(key + ": " + headers.get(key) + "\r\n");
-            }
-            dos.writeBytes("\r\n");
-        } catch (IOException e) {
-            log.error(e.getMessage());
-        }
-    }
-
-    private void responseBody(DataOutputStream dos, byte[] body) {
-        try {
-            dos.write(body, 0, body.length);
-            dos.flush();
-        } catch (IOException e) {
-            log.error(e.getMessage());
-        }
-    }
-
-    private String getFileExtension(String filename) {
-        String[] args = filename.split("\\.");
-        if (args.length > 0) {
-            return "." + args[args.length - 1];
-        }
-        return null;
-    }
-
-    private String getContentType(String extension) {
-        return CONTENT_TYPES.get(extension);
     }
 
 }

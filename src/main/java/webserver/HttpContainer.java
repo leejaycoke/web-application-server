@@ -14,7 +14,10 @@ public class HttpContainer {
 
     public HttpResponse get(HttpRequest httpRequest) {
         String path = httpRequest.getPath();
-        HttpResponse response = new HttpResponse(200, path);
+        HttpResponse response = new HttpResponse.Builder()
+                .setPath(path)
+                .build();
+
         return response;
     }
 
@@ -37,9 +40,9 @@ public class HttpContainer {
         DataBase.addUser(user);
 
         return new HttpResponse.Builder()
-                .setPath("/webapp/index.html")
+                .setPath("/index.html")
                 .setRedirect(true)
-                .setStatusCode(302).build();
+                .build();
     }
 
     private HttpResponse login(HttpRequest httpRequest) {
@@ -48,14 +51,20 @@ public class HttpContainer {
 
         User user = DataBase.findUserById(userId);
         if (user != null && user.getPassword().equals(password)) {
-            HttpResponse response = new HttpResponse(200, "/index.html");
-            response.setRedirect(true);
-            response.addCookie("logined", "true");
-            response.addCookie("domain", "localhost");
-            response.addCookie("path", "/");
+            Cookie cookie = new Cookie("localhost", "/");
+            cookie.addValue("logined", "true");
+
+            HttpResponse response = new HttpResponse.Builder()
+                    .setPath("/index.html")
+                    .setCookie(cookie)
+                    .setRedirect(true)
+                    .build();
             return response;
         }
 
-        return new HttpResponse(200, "/user/login_failed.html");
+        return new HttpResponse.Builder()
+                .setRedirect(true)
+                .setPath("/user/login_failed.html")
+                .build();
     }
 }
