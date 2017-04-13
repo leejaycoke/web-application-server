@@ -3,10 +3,7 @@ package webserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.util.*;
 
 /**
@@ -28,6 +25,10 @@ public class HttpRequest {
 
     private Map<String, String> data = new HashMap<>();
 
+    public HttpRequest(String in) throws IOException {
+        this(new ByteArrayInputStream(in.getBytes()));
+    }
+
     public HttpRequest(InputStream in) throws IOException {
         parse(new BufferedReader(new InputStreamReader(in, "UTF-8")));
     }
@@ -40,8 +41,13 @@ public class HttpRequest {
             lines.add(line);
         }
 
-        parseRequest(lines.get(0));
-        parseHeaders(lines.subList(1, lines.size() - 1));
+        if (lines.size() > 0) {
+            parseRequest(lines.get(0));
+        }
+
+        if (lines.size() > 1) {
+            parseHeaders(lines.subList(1, lines.size() - 1));
+        }
 
         Integer contentLength = getContentLength();
         if (getMethod() == Method.POST && contentLength > 0) {
@@ -63,7 +69,7 @@ public class HttpRequest {
     private void parseRequest(String requestLine) {
         String[] requestLines = requestLine.split(" ");
         if (requestLines.length != 3) {
-            return;
+            throw new RuntimeException("Bad RequestLine");
         }
 
         parseMethod(requestLines[0]);

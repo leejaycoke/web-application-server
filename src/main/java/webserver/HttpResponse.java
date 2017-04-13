@@ -13,7 +13,19 @@ import java.util.Map;
  */
 public class HttpResponse {
 
-    private Builder builder;
+    private final static Map<String, String> CONTENT_TYPES = new HashMap<>();
+
+    static {
+        CONTENT_TYPES.put(".jpeg", "image/jpeg");
+        CONTENT_TYPES.put(".jpg", "image/jpg");
+        CONTENT_TYPES.put(".html", "text/html; charset=UTF-8");
+        CONTENT_TYPES.put(".htm", "text/html; charset=UTF-8");
+        CONTENT_TYPES.put(".js", "application/javascript");
+        CONTENT_TYPES.put(".css", "text/css");
+        CONTENT_TYPES.put(".woff", "application/x-font-woff");
+    }
+
+    private final Builder builder;
 
     public HttpResponse(Builder builder) {
         this.builder = builder;
@@ -37,6 +49,11 @@ public class HttpResponse {
 
         if (builder.isRedirect()) {
             dos.writeBytes("Location: " + builder.getPath() + "\r\n");
+        }
+
+        String contentType = getContentType();
+        if (contentType != null) {
+            dos.writeBytes("Content-Type: " + contentType + "\r\n");
         }
 
         dos.writeBytes("\r\n");
@@ -68,6 +85,15 @@ public class HttpResponse {
                 .append("Path=").append(cookie.getPath());
 
         dos.writeBytes("Set-Cookie: " + stringBuilder.toString() + "\r\n");
+    }
+
+    private String getContentType() {
+        if (builder.getPath() == null) {
+            return null;
+        }
+
+        String[] uris = builder.getPath().split("\\.");
+        return CONTENT_TYPES.get("." + uris[uris.length - 1]);
     }
 
     public static class Builder {

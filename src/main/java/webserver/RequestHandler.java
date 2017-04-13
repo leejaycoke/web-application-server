@@ -10,22 +10,8 @@ import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.Socket;
 import java.net.SocketException;
-import java.util.HashMap;
-import java.util.Map;
 
 public class RequestHandler extends Thread {
-
-    private final static Map<String, String> CONTENT_TYPES = new HashMap<>();
-
-    static {
-        CONTENT_TYPES.put(".jpeg", "image/jpeg");
-        CONTENT_TYPES.put(".jpg", "image/jpg");
-        CONTENT_TYPES.put(".html", "text/html; charset=UTF-8");
-        CONTENT_TYPES.put(".htm", "text/html; charset=UTF-8");
-        CONTENT_TYPES.put(".js", "application/javascript");
-        CONTENT_TYPES.put(".css", "text/css");
-        CONTENT_TYPES.put(".woff", "application/x-font-woff");
-    }
 
     private static final Logger log = LoggerFactory.getLogger(RequestHandler.class);
 
